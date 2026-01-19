@@ -2,6 +2,12 @@
 
 `heavyops` allows you to identify performance bottlenecks related to specific bytecode instructions.
 
+## Installation
+
+```bash
+$ pip install heavyops
+```
+
 ## Example use case: side effects of closures
 
 When a variable is captured by a closure, Python creates a cell object to hold the variable. This can lead to performance overhead. By tracking `LOAD_DEREF` instructions, you can identify functions that use closures and refactor them if necessary. For example:
