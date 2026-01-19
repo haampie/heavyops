@@ -2,6 +2,10 @@
 
 `heavyops` allows you to identify performance bottlenecks related to specific bytecode instructions.
 
+This allows you to find redundant object allocations, unexpected side effects of closures, and other inefficiencies in your Python code.
+
+The project is based on `sys.monitoring`.
+
 ## Installation
 
 ```bash
