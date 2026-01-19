@@ -16,38 +16,24 @@ ops = (
 )
 
 
-def make_on_instruction(ops_codes: set[int], file_filter: re.Pattern[str] | None):
-    counts: Counter[tuple[CodeType, int]] = Counter()
-    code_object_is_tracked = {}
-    total = 0
+class InstructionCounter:
+    def __init__(self, ops_codes: set[int], file_filter: re.Pattern | None = None):
+        self.ops_codes = ops_codes
+        self.file_filter = file_filter
+        self.counts: Counter[tuple[CodeType, int]] = Counter()
+        self.total = 0
 
-    if file_filter:
+    def on_instruction(self, code: CodeType, instruction_offset: int) -> None:
+        self.total += 1
+        if code.co_code[instruction_offset] in self.ops_codes:
+            self.counts[(code, instruction_offset)] += 1
 
-        def on_instruction(code: CodeType, instruction_offset: int):
-            nonlocal total
-            total += 1
-            if code not in code_object_is_tracked:
-                code_object_is_tracked[code] = bool(
-                    file_filter.search(code.co_filename)
-                )
-            if (
-                code_object_is_tracked[code]
-                and code.co_code[instruction_offset] in ops_codes
-            ):
-                counts[(code, instruction_offset)] += 1
-    else:
-
-        def on_instruction(code: CodeType, instruction_offset: int):
-            nonlocal total
-            total += 1
-            if code.co_code[instruction_offset] in ops_codes:
-                counts[(code, instruction_offset)] += 1
-
-    def get_results():
-        return counts, total
-
-    return on_instruction, get_results
-
+    def on_py_start(self, code: CodeType, instruction_offset: int) -> None:
+        if not self.file_filter.search(code.co_filename):
+            return
+        sys.monitoring.set_local_events(
+            sys.monitoring.PROFILER_ID, code, sys.monitoring.events.INSTRUCTION
+        )
 
 def main():
     parser = argparse.ArgumentParser(
@@ -87,18 +73,25 @@ def main():
 
     tool_id = sys.monitoring.PROFILER_ID
     sys.monitoring.use_tool_id(tool_id, "HeavyOpsProfiler")
-    on_instruction_cb, get_results = make_on_instruction(ops_codes, file_filter)
+    counter = InstructionCounter(ops_codes, file_filter)
+
     sys.monitoring.register_callback(
-        tool_id, sys.monitoring.events.INSTRUCTION, on_instruction_cb
+        tool_id, sys.monitoring.events.INSTRUCTION, counter.on_instruction
     )
-    sys.monitoring.set_events(tool_id, sys.monitoring.events.INSTRUCTION)
+
+    if file_filter:
+        sys.monitoring.set_events(tool_id, sys.monitoring.events.PY_START)
+        sys.monitoring.register_callback(
+            tool_id, sys.monitoring.events.PY_START, counter.on_py_start
+        )
+    else:
+        sys.monitoring.set_events(tool_id, sys.monitoring.events.INSTRUCTION)
 
     try:
         runpy.run_path(target_script, run_name="__main__")
     finally:
         sys.monitoring.set_events(tool_id, 0)
-        counts, total = get_results()
-        report(counts, total)
+        report(counter.counts, counter.total)
 
 
 def report(counts: Counter[tuple[CodeType, int]], total: int):
